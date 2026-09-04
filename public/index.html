@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    >
+
+    <title>Pedro Online</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+</head>
+
+<body>
+
+    <div
+        id="mensajeFlotante"
+        class="mensaje-flotante"
+    ></div>
+
+
+    <section
+        id="lobby"
+        class="pantalla lobby"
+    >
+
+        <div class="panel-lobby">
+
+            <h1>
+                🃏 Pedro Online
+            </h1>
+
+            <p class="subtitulo">
+                Entrá a la mesa y empezá la partida.
+            </p>
+
+
+            <div class="formulario">
+
+                <label for="nombreJugador">
+                    Tu nombre
+                </label>
+
+                <input
+                    id="nombreJugador"
+                    type="text"
+                    maxlength="18"
+                    autocomplete="off"
+                    placeholder="Ej: Alan"
+                >
+
+                <button
+                    id="btnEntrar"
+                    class="boton boton-verde"
+                >
+                    Entrar a la partida
+                </button>
+                <button
+    id="btnReglas"
+    class="boton boton-reglas"
+>
+    📖 Ver reglas
+</button>
+
+            </div>
+
+
+            <div class="configuracion">
+
+                <label for="tiempoTurno">
+                    Tiempo
+                </label>
+
+                <div class="selector-tiempo">
+
+                    <input
+                        id="tiempoTurno"
+                        type="number"
+                        min="10"
+                        max="60"
+                        value="30"
+                    >
+
+                    <span>
+                        segundos
+                    </span>
+
+                </div>
+
+                <small>
+                    Entre 10 y 60 segundos.
+                </small>
+
+            </div>
+
+
+            <div class="lista-lobby">
+
+                <h2>
+                    Jugadores
+                    <span id="cantidadJugadores">
+                        0
+                    </span>
+                    /8
+                </h2>
+
+                <div id="jugadoresLobby"></div>
+
+            </div>
+
+
+            <button
+                id="btnIniciar"
+                class="boton boton-iniciar"
+                disabled
+            >
+                Iniciar partida
+            </button>
+
+            <p id="mensajeLobby"></p>
+
+        </div>
+
+    </section>
+
+
+    <section
+        id="juego"
+        class="pantalla oculto"
+    >
+
+        <header class="barra-superior">
+
+            <div class="ronda">
+
+                Ronda
+
+                <strong id="numeroRonda">
+                    0
+                </strong>
+
+            </div>
+
+
+            <div class="turno-superior">
+
+                <span id="turno">
+                    Esperando...
+                </span>
+
+                <span
+                    id="temporizador"
+                    class="reloj"
+                >
+                    --
+                </span>
+
+            </div>
+
+
+            <button
+                id="btnPedro"
+                class="boton boton-pedro"
+            >
+                PEDRO
+            </button>
+
+        </header>
+
+
+        <main class="mesa">
+
+            <aside
+                id="marcador"
+                class="marcador"
+            ></aside>
+
+
+            <section
+                id="jugadoresMesa"
+                class="jugadores-mesa"
+            ></section>
+
+
+            <section class="centro-mesa">
+
+                <div class="mazo-cementerio">
+
+                    <div class="contenedor-pila">
+
+                        <span class="titulo-pila">
+                            Mazo
+                        </span>
+
+                        <button
+                            id="mazo"
+                            class="mazo"
+                        >
+                            <span>🂠</span>
+                        </button>
+
+                    </div>
+
+
+                    <div class="contenedor-pila">
+
+                        <span class="titulo-pila">
+                            Cementerio
+                        </span>
+
+                        <button
+                            id="cementerio"
+                            class="cementerio vacio"
+                        >
+                            <span>
+                                Vacío
+                            </span>
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <p
+                    id="estadoJuego"
+                    class="estado-juego"
+                >
+                    Esperando...
+                </p>
+
+
+                <div
+                    id="zonaCartaSacada"
+                    class="zona-carta-sacada oculto"
+                >
+
+                    <span class="titulo-carta-sacada">
+                        Carta sacada
+                    </span>
+
+                    <div id="cartaSacada"></div>
+
+                </div>
+
+
+                <div
+                    id="opcionesCarta"
+                    class="opciones-carta oculto"
+                >
+
+                    <button
+                        id="btnQuedarme"
+                        class="boton boton-verde"
+                    >
+                        Reemplazar una carta
+                    </button>
+
+                    <button
+                        id="btnCementerio"
+                        class="boton"
+                    >
+                        Descartar
+                    </button>
+
+                </div>
+
+
+                <div
+                    id="interfazPoder"
+                    class="panel-poder oculto"
+                >
+
+                    <h3 id="tituloPoder">
+                        Poder
+                    </h3>
+
+                    <p id="textoPoder"></p>
+
+                    <button
+                        id="btnListo"
+                        class="boton boton-verde"
+                    >
+                        LISTO
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <section class="zona-propia">
+
+                <h2>
+                    Tus cartas
+                </h2>
+
+                <div
+                    id="cartas"
+                    class="cartas-propias"
+                ></div>
+
+                <p class="instruccion">
+                    Arrastrá una carta tuya al cementerio para intentar un Salto de fe.
+                </p>
+
+            </section>
+
+        </main>
+
+    </section>
+
+
+    <!-- PREPARACIÓN -->
+
+    <div
+        id="fasePreparacion"
+        class="overlay oculto"
+    >
+
+        <div class="panel-overlay">
+
+            <h2>
+                👀 Mirá tus cartas
+            </h2>
+
+            <div
+                id="temporizadorPreparacion"
+                class="temporizador-grande"
+            >
+                30
+            </div>
+
+            <p id="preparacionMensaje">
+                Elegí 2 cartas.
+            </p>
+
+            <div
+                id="cartasPreparacion"
+                class="cartas-preparacion"
+            ></div>
+
+            <p id="contadorPreparacion">
+                Miraste 0/2
+            </p>
+
+            <p id="contadorListos">
+                Listos 0/0
+            </p>
+
+            <button
+                id="btnListoPreparacion"
+                class="boton boton-verde"
+            >
+                LISTO
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- RESULTADOS -->
+
+    <div
+        id="resultadosRonda"
+        class="overlay oculto"
+    >
+
+        <div class="panel-overlay">
+
+            <h2>
+                Fin de la ronda
+            </h2>
+
+            <p id="quienCantoPedro"></p>
+
+            <div id="tablaResultados"></div>
+
+            <div
+                id="zonaSiguienteRonda"
+                class="zona-siguiente-ronda"
+            >
+
+                <p id="contadorSiguienteRonda">
+                    Listos para la próxima ronda: 0/0
+                </p>
+
+                <button
+                    id="btnSiguienteRonda"
+                    class="boton boton-verde"
+                >
+                    LISTO
+                </button>
+
+                <p class="texto-secundario">
+                    La próxima ronda comenzará cuando todos estén listos.
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- FINAL -->
+
+    <div
+        id="resultadoFinal"
+        class="overlay oculto"
+    >
+
+        <div class="panel-overlay">
+
+            <h2>
+                🏆 Fin de la partida
+            </h2>
+
+            <div id="tablaFinal"></div>
+
+            <button
+                id="btnVolverLobby"
+                class="boton boton-verde"
+            >
+                Volver
+            </button>
+
+        </div>
+
+    </div>
+
+<!-- =================================================
+     REGLAS
+================================================== -->
+
+<div
+    id="panelReglas"
+    class="overlay oculto"
+>
+
+    <div class="panel-overlay panel-reglas">
+
+        <div class="encabezado-reglas">
+
+            <h2>
+                📖 Reglas de Pedro
+            </h2>
+
+            <button
+                id="btnCerrarReglas"
+                class="boton-cerrar"
+            >
+                ✕
+            </button>
+
+        </div>
+
+
+        <div class="contenido-reglas">
+
+            <h3>Objetivo</h3>
+
+            <p>
+                Tener la menor cantidad de puntos posible.
+                Cuando un jugador llega a 200 puntos, pierde la partida.
+                Gana quien tenga menos puntos.
+            </p>
+
+
+            <h3>Cartas</h3>
+
+            <p>
+                Se juega con una baraja española de 48 cartas:
+                oros, copas, espadas y bastos, del 1 al 12.
+            </p>
+
+            <p>
+                Cada carta vale su número, excepto el
+                <strong>12 de espadas</strong>, que vale
+                <strong>0 puntos</strong>.
+            </p>
+
+
+            <h3>Inicio de la ronda</h3>
+
+            <p>
+                Cada jugador recibe 4 cartas boca abajo.
+                Al comenzar la ronda puede mirar 2 cartas a elección.
+                Las dos pueden permanecer visibles simultáneamente
+                durante la fase de preparación.
+            </p>
+
+
+            <h3>Turno</h3>
+
+            <p>
+                En tu turno podés sacar una carta del mazo
+                o tomar la carta superior del cementerio.
+            </p>
+
+            <p>
+                Luego podés reemplazar una de tus cartas o,
+                si la sacaste del mazo, descartarla directamente.
+            </p>
+
+
+            <h3>Poderes</h3>
+
+            <p>
+                Los poderes funcionan únicamente cuando la carta
+                sale directamente del mazo y es descartada.
+            </p>
+
+            <p>
+                <strong>6 y 7:</strong>
+                mirar una carta propia.
+            </p>
+
+            <p>
+                <strong>8 y 9:</strong>
+                mirar una carta de un rival.
+            </p>
+
+            <p>
+                <strong>10 y 11:</strong>
+                intercambiar a ciegas una carta propia
+                con una carta de un rival.
+            </p>
+
+
+            <h3>Salto de fe</h3>
+
+            <p>
+                Puede hacerse en cualquier momento,
+                aunque no sea tu turno.
+            </p>
+
+            <p>
+                Arrastrá una carta de tu mano al cementerio.
+                Si su número coincide con la carta que está
+                arriba del cementerio en ese instante,
+                descartás tu carta correctamente.
+            </p>
+
+            <p>
+                Si mientras la arrastrás otro jugador cambia
+                la carta del cementerio y ya no coincide,
+                recibís una carta de penalización.
+            </p>
+
+
+            <h3>PEDRO</h3>
+
+            <p>
+                Cualquier jugador puede cantar PEDRO en cualquier momento.
+                La ronda termina inmediatamente y se suman los puntos
+                de todas las cartas que tenga cada jugador.
+            </p>
+
+
+            <h3>Entre rondas</h3>
+
+            <p>
+                Después de mostrar los resultados,
+                cada jugador debe tocar LISTO.
+                La nueva ronda empieza cuando todos estén listos.
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+
+</body>
+
+</html>

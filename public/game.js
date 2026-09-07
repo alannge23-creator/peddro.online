@@ -13,6 +13,42 @@ let miNombre = "";
 let codigoSala = null;
 let anfitrionId = null;
 
+const CLAVE_SESION = "pedroOnlineSesion";
+
+function obtenerSessionToken() {
+    let token = localStorage.getItem("pedroOnlineSessionToken");
+
+    if (!token) {
+        token = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+        localStorage.setItem("pedroOnlineSessionToken", token);
+    }
+
+    return token;
+}
+
+const sessionToken = obtenerSessionToken();
+
+function guardarSesionLocal() {
+    if (!codigoSala || !miNombre) return;
+
+    localStorage.setItem(
+        CLAVE_SESION,
+        JSON.stringify({
+            codigoSala,
+            nombre: miNombre,
+            sessionToken
+        })
+    );
+}
+
+function leerSesionLocal() {
+    try {
+        return JSON.parse(localStorage.getItem(CLAVE_SESION) || "null");
+    } catch {
+        return null;
+    }
+}
+
 let jugadores = [];
 let misCartas = [];
 
@@ -2515,7 +2551,7 @@ $("btnCrearSala")
                 mostrarMensaje("Escribí tu nombre.");
                 return;
             }
-            socket.emit("crearSala", nombre);
+            socket.emit("crearSala", { nombre, sessionToken });
         }
     );
 
@@ -2533,7 +2569,7 @@ $("btnUnirseSala")
                 mostrarMensaje("Ingresá el código de 6 caracteres.");
                 return;
             }
-            socket.emit("unirseSala", { nombre, codigo });
+            socket.emit("unirseSala", { nombre, codigo, sessionToken });
         }
     );
 
@@ -2896,9 +2932,15 @@ $("panelReglas")
 socket.on(
     "connect",
     () => {
+        miId = socket.id;
 
-        miId =
-            socket.id;
+        const sesion = leerSesionLocal();
+
+        if (sesion?.sessionToken === sessionToken) {
+            socket.emit("reconectarSala", {
+                sessionToken
+            });
+        }
     }
 );
 
@@ -2951,8 +2993,12 @@ socket.on(
         $("codigoSalaVisible").textContent = codigoSala || "------";
         $("nombreJugador").disabled = true;
 
+        guardarSesionLocal();
+
         mostrarMensaje(
-            `Entraste como ${miNombre} en la sala ${codigoSala}.`
+            datos.reconectado
+                ? `Reconectado a la sala ${codigoSala}.`
+                : `Entraste como ${miNombre} en la sala ${codigoSala}.`
         );
     }
 );
@@ -3536,6 +3582,7 @@ socket.on("salaCreada", datos => {
     anfitrionId = miId;
     $("infoSala").classList.remove("oculto");
     $("codigoSalaVisible").textContent = codigoSala;
+    guardarSesionLocal();
     mostrarMensaje(`Sala ${codigoSala} creada. Compartí el código.`);
 });
 
@@ -3543,6 +3590,20 @@ socket.on("anfitrionCambiado", datos => {
     anfitrionId = datos.anfitrionId;
     mostrarMensaje(`${datos.nombre} ahora es el anfitrión.`);
     renderizarLobby();
+});
+
+socket.on("reconexionExitosa", datos => {
+    codigoSala = datos.codigoSala || codigoSala;
+    miNombre = datos.nombre || miNombre;
+    guardarSesionLocal();
+});
+
+socket.on("reconexionFallida", () => {
+    const sesion = leerSesionLocal();
+
+    if (sesion?.sessionToken === sessionToken) {
+        localStorage.removeItem(CLAVE_SESION);
+    }
 });
 
 socket.on(

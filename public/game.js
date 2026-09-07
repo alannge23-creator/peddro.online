@@ -2592,6 +2592,20 @@ $("btnCopiarCodigo")
         }
     });
 
+
+$("btnSalirSala")
+    .addEventListener("click", () => {
+        if (!codigoSala) return;
+
+        const confirmar = window.confirm(
+            "¿Querés salir de la sala? Si hay una partida en curso, abandonarás tu lugar."
+        );
+
+        if (!confirmar) return;
+
+        socket.emit("salirSala");
+    });
+
 $("nombreJugador")
     .addEventListener(
         "keydown",
@@ -3605,6 +3619,29 @@ socket.on("reconexionFallida", () => {
         localStorage.removeItem(CLAVE_SESION);
     }
 });
+
+socket.on(
+    "salidaSalaConfirmada",
+    () => {
+        // Al salir voluntariamente borramos TODA la información local
+        // de reconexión. Al recargar se generará un token de sesión nuevo.
+        localStorage.removeItem(CLAVE_SESION);
+        localStorage.removeItem("pedroOnlineSessionToken");
+
+        codigoSala = null;
+        anfitrionId = null;
+        miNombre = "";
+        jugadores = [];
+        misCartas = [];
+        partidaIniciada = false;
+        fasePreparacion = false;
+        faseEntreRondas = false;
+        miTurno = false;
+
+        window.location.reload();
+    }
+);
+
 
 socket.on(
     "errorJuego",

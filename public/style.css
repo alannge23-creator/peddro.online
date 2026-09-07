@@ -1510,3 +1510,35 @@ input:focus {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* =====================================================
+   SALIR DE LA SALA
+===================================================== */
+
+.acciones-sala {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.boton-salir-sala {
+    background: #8e2f34;
+    border: 1px solid #b94a50;
+}
+
+.boton-salir-sala:hover:not(:disabled) {
+    filter: brightness(1.12);
+}
+
+@media (max-width: 600px) {
+    .acciones-sala {
+        width: 100%;
+    }
+
+    .acciones-sala .boton {
+        flex: 1 1 150px;
+    }
+}

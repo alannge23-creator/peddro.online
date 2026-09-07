@@ -627,6 +627,51 @@ io.on("connection", socket => {
         agregarJugadorASala(sala, socket, datos?.nombre, datos?.sessionToken);
     });
 
+    // ==================================================
+    // SALIR VOLUNTARIAMENTE DE LA SALA
+    // ==================================================
+
+    socket.on("salirSala", () => {
+        const codigo = socket.data.codigoSala;
+        const sala = salas.get(codigo);
+
+        if (!sala) {
+            socket.data.codigoSala = null;
+            socket.data.sessionToken = null;
+            socket.emit("salidaSalaConfirmada");
+            return;
+        }
+
+        const jugador = sala.jugadores.find(
+            j => j.id === socket.id || j.sessionToken === socket.data.sessionToken
+        );
+
+        if (!jugador) {
+            socket.leave(sala.codigo);
+            socket.data.codigoSala = null;
+            socket.data.sessionToken = null;
+            socket.emit("salidaSalaConfirmada");
+            return;
+        }
+
+        // Una salida voluntaria NO usa el período de gracia de reconexión.
+        if (jugador.temporizadorExpulsion) {
+            clearTimeout(jugador.temporizadorExpulsion);
+            jugador.temporizadorExpulsion = null;
+        }
+
+        socket.leave(sala.codigo);
+
+        // Limpiamos primero los datos del socket para que, si el navegador
+        // se recarga después, el disconnect no vuelva a programar reconexión.
+        socket.data.codigoSala = null;
+        socket.data.sessionToken = null;
+
+        eliminarJugadorDefinitivamente(sala, jugador);
+
+        socket.emit("salidaSalaConfirmada");
+    });
+
     // Compatibilidad local con clientes anteriores: crea una sala automáticamente.
     socket.on("entrarPartida", nombre => {
         if (socket.data.codigoSala) return;

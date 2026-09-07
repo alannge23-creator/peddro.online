@@ -10,6 +10,8 @@ const $ = id =>
 
 let miId = null;
 let miNombre = "";
+let codigoSala = null;
+let anfitrionId = null;
 
 let jugadores = [];
 let misCartas = [];
@@ -294,6 +296,244 @@ function revelarTemporalmente(
 }
 
 
+
+
+// ======================================================
+// ANIMACIONES FÍSICAS DE CARTAS (v1.1.2)
+// ======================================================
+
+function centroElemento(elemento) {
+    if (!elemento) return null;
+
+    const r = elemento.getBoundingClientRect();
+
+    if (r.width === 0 || r.height === 0) {
+        return null;
+    }
+
+    return {
+        x: r.left + r.width / 2,
+        y: r.top + r.height / 2,
+        width: r.width,
+        height: r.height
+    };
+}
+
+
+function cartaJugadorEnMesa(
+    jugadorId,
+    indice
+) {
+    if (jugadorId === miId) {
+        return document.querySelector(
+            `#cartas .carta[data-indice="${indice}"]`
+        );
+    }
+
+    return document.querySelector(
+        `.carta-rival[data-jugador-id="${jugadorId}"][data-indice="${indice}"]`
+    );
+}
+
+
+/*
+    Mueve EL ELEMENTO REAL que ya existe en destino.
+    Lo coloca visualmente encima del origen y lo hace viajar
+    hasta su posición real. No se crea ninguna copia.
+*/
+function animarCartaRealDesde(
+    origen,
+    cartaReal,
+    opciones = {}
+) {
+    if (!origen || !cartaReal) return Promise.resolve();
+
+    const a = centroElemento(origen);
+    const b = centroElemento(cartaReal);
+
+    if (!a || !b) return Promise.resolve();
+
+    const duracion = opciones.duracion || 650;
+    const voltear = opciones.voltear === true;
+
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+
+    cartaReal.classList.add(
+        "carta-en-animacion-real"
+    );
+
+    if (voltear) {
+        cartaReal.classList.add(
+            "carta-real-dorso-temporal"
+        );
+    }
+
+    const animacion = cartaReal.animate(
+        [
+            {
+                transform:
+                    `translate(${dx}px, ${dy}px) rotate(-5deg) scale(.92)`,
+                offset: 0
+            },
+            {
+                transform:
+                    `translate(${dx * 0.38}px, ${dy * 0.38 - 18}px) rotateY(${voltear ? 90 : 0}deg) rotate(2deg) scale(1.04)`,
+                offset: 0.52
+            },
+            {
+                transform:
+                    "translate(0px, 0px) rotateY(0deg) rotate(0deg) scale(1)",
+                offset: 1
+            }
+        ],
+        {
+            duration: duracion,
+            easing: "cubic-bezier(.2,.78,.22,1)",
+            fill: "both"
+        }
+    );
+
+    if (voltear) {
+        setTimeout(
+            () => {
+                cartaReal.classList.remove(
+                    "carta-real-dorso-temporal"
+                );
+            },
+            Math.round(duracion * 0.52)
+        );
+    }
+
+    return animacion.finished
+        .catch(() => {})
+        .then(() => {
+            animacion.cancel();
+
+            cartaReal.classList.remove(
+                "carta-en-animacion-real",
+                "carta-real-dorso-temporal"
+            );
+        });
+}
+
+
+/*
+    Mueve el propio nodo de carta desde donde está
+    hasta otro elemento de la mesa.
+*/
+function animarCartaRealHacia(
+    cartaReal,
+    destino,
+    opciones = {}
+) {
+    if (!cartaReal || !destino) return Promise.resolve();
+
+    const a = centroElemento(cartaReal);
+    const b = centroElemento(destino);
+
+    if (!a || !b) return Promise.resolve();
+
+    const duracion = opciones.duracion || 520;
+    const arco = opciones.arco || -18;
+
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+
+    cartaReal.classList.add(
+        "carta-en-animacion-real"
+    );
+
+    const animacion = cartaReal.animate(
+        [
+            {
+                transform:
+                    "translate(0px, 0px) rotate(0deg) scale(1)",
+                offset: 0
+            },
+            {
+                transform:
+                    `translate(${dx * 0.52}px, ${dy * 0.52 + arco}px) rotate(4deg) scale(1.04)`,
+                offset: 0.52
+            },
+            {
+                transform:
+                    `translate(${dx}px, ${dy}px) rotate(0deg) scale(.96)`,
+                offset: 1
+            }
+        ],
+        {
+            duration: duracion,
+            easing: "cubic-bezier(.22,.8,.24,1)",
+            fill: "both"
+        }
+    );
+
+    return animacion.finished
+        .catch(() => {})
+        .then(() => {
+            cartaReal.classList.remove(
+                "carta-en-animacion-real"
+            );
+        });
+}
+
+
+/*
+    10 / 11: las DOS cartas que están en pantalla son
+    las que se desplazan. No hay carta fantasma.
+*/
+function animarIntercambioReal(datos) {
+    const carta1 = cartaJugadorEnMesa(
+        datos.jugadorId,
+        datos.indicePropio
+    );
+
+    const carta2 = cartaJugadorEnMesa(
+        datos.rivalId,
+        datos.indiceRival
+    );
+
+    if (!carta1 || !carta2) {
+        return Promise.resolve();
+    }
+
+    carta1.classList.add(
+        "carta-intercambio-real"
+    );
+
+    carta2.classList.add(
+        "carta-intercambio-real"
+    );
+
+    return Promise.all([
+        animarCartaRealHacia(
+            carta1,
+            carta2,
+            {
+                duracion: 620,
+                arco: -32
+            }
+        ),
+        animarCartaRealHacia(
+            carta2,
+            carta1,
+            {
+                duracion: 620,
+                arco: 32
+            }
+        )
+    ]).then(() => {
+        carta1.classList.remove(
+            "carta-intercambio-real"
+        );
+
+        carta2.classList.remove(
+            "carta-intercambio-real"
+        );
+    });
+}
+
 // ======================================================
 // MENSAJES
 // ======================================================
@@ -407,8 +647,13 @@ function renderizarLobby() {
                 jugador.id === miId
         );
 
+    const soyAnfitrion =
+        miId &&
+        anfitrionId === miId;
+
     const puedeIniciar =
         estoyDentro &&
+        soyAnfitrion &&
         !partidaIniciada &&
         jugadores.length >= 2;
 
@@ -419,11 +664,18 @@ function renderizarLobby() {
 
         $("mensajeLobby")
             .textContent =
-            "Entrá con tu nombre.";
+            "Creá una sala o unite con un código.";
+
+        $("mensajeAnfitrion").textContent = "";
 
     } else if (
         jugadores.length < 2
     ) {
+
+        $("mensajeAnfitrion").textContent =
+            soyAnfitrion
+                ? "Sos el anfitrión. Compartí el código de la sala."
+                : "Esperando a que el anfitrión inicie la partida.";
 
         $("mensajeLobby")
             .textContent =
@@ -433,7 +685,18 @@ function renderizarLobby() {
 
         $("mensajeLobby")
             .textContent =
-            "Ya pueden iniciar la partida.";
+            soyAnfitrion
+                ? "Ya podés iniciar la partida."
+                : "Esperando a que el anfitrión inicie la partida.";
+
+        $("mensajeAnfitrion").textContent =
+            soyAnfitrion
+                ? "👑 Sos el anfitrión"
+                : "👑 Solo el anfitrión puede iniciar";
+    }
+
+    if ($("tiempoTurno")) {
+        $("tiempoTurno").disabled = estoyDentro && !soyAnfitrion;
     }
 }
 
@@ -2243,32 +2506,55 @@ function mostrarFinal(
 // BOTONES
 // ======================================================
 
-$("btnEntrar")
+$("btnCrearSala")
     .addEventListener(
         "click",
         () => {
-
-            const nombre =
-                $("nombreJugador")
-                    .value
-                    .trim();
-
+            const nombre = $("nombreJugador").value.trim();
             if (!nombre) {
-
-                mostrarMensaje(
-                    "Escribí tu nombre."
-                );
-
+                mostrarMensaje("Escribí tu nombre.");
                 return;
             }
-
-            socket.emit(
-                "entrarPartida",
-                nombre
-            );
+            socket.emit("crearSala", nombre);
         }
     );
 
+$("btnUnirseSala")
+    .addEventListener(
+        "click",
+        () => {
+            const nombre = $("nombreJugador").value.trim();
+            const codigo = $("codigoSalaInput").value.trim().toUpperCase();
+            if (!nombre) {
+                mostrarMensaje("Escribí tu nombre.");
+                return;
+            }
+            if (codigo.length !== 6) {
+                mostrarMensaje("Ingresá el código de 6 caracteres.");
+                return;
+            }
+            socket.emit("unirseSala", { nombre, codigo });
+        }
+    );
+
+$("codigoSalaInput")
+    .addEventListener("input", evento => {
+        evento.target.value = evento.target.value
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "")
+            .slice(0, 6);
+    });
+
+$("btnCopiarCodigo")
+    .addEventListener("click", async () => {
+        if (!codigoSala) return;
+        try {
+            await navigator.clipboard.writeText(codigoSala);
+            mostrarMensaje(`Código ${codigoSala} copiado.`);
+        } catch {
+            mostrarMensaje(`Código de sala: ${codigoSala}`, 4000);
+        }
+    });
 
 $("nombreJugador")
     .addEventListener(
@@ -2280,8 +2566,11 @@ $("nombreJugador")
                 "Enter"
             ) {
 
-                $("btnEntrar")
-                    .click();
+                if ($("codigoSalaInput").value.trim()) {
+                    $("btnUnirseSala").click();
+                } else {
+                    $("btnCrearSala").click();
+                }
             }
         }
     );
@@ -2381,14 +2670,29 @@ $("cementerio")
 $("btnCementerio")
     .addEventListener(
         "click",
-        () => {
+        async () => {
 
             if (
                 !miTurno ||
                 !cartaSacada
             ) {
-
                 return;
+            }
+
+            const cartaReal =
+                document.querySelector(
+                    "#cartaSacada .carta-visible"
+                );
+
+            if (cartaReal) {
+                await animarCartaRealHacia(
+                    cartaReal,
+                    $("cementerio"),
+                    {
+                        duracion: 520,
+                        arco: -14
+                    }
+                );
             }
 
             socket.emit(
@@ -2403,13 +2707,12 @@ $("btnCementerio")
 $("btnQuedarme")
     .addEventListener(
         "click",
-        () => {
+        async () => {
 
             if (
                 !miTurno ||
                 !cartaSacada
             ) {
-
                 return;
             }
 
@@ -2417,13 +2720,52 @@ $("btnQuedarme")
                 indiceReemplazo ===
                 null
             ) {
-
                 mostrarMensaje(
                     "Tocá una de tus cartas para elegir cuál reemplazar."
                 );
 
                 return;
             }
+
+            const nuevaReal =
+                document.querySelector(
+                    "#cartaSacada .carta-visible"
+                );
+
+            const viejaReal =
+                cartaJugadorEnMesa(
+                    miId,
+                    indiceReemplazo
+                );
+
+            /*
+                Las dos cartas reales se mueven:
+                vieja -> cementerio
+                nueva -> posición de la vieja
+            */
+            await Promise.all([
+                viejaReal
+                    ? animarCartaRealHacia(
+                        viejaReal,
+                        $("cementerio"),
+                        {
+                            duracion: 540,
+                            arco: -22
+                        }
+                    )
+                    : Promise.resolve(),
+
+                nuevaReal && viejaReal
+                    ? animarCartaRealHacia(
+                        nuevaReal,
+                        viejaReal,
+                        {
+                            duracion: 540,
+                            arco: 18
+                        }
+                    )
+                    : Promise.resolve()
+            ]);
 
             socket.emit(
                 "reemplazarCarta",
@@ -2577,6 +2919,9 @@ socket.on(
         faseEntreRondas =
             datos.faseEntreRondas;
 
+        codigoSala = datos.codigoSala || codigoSala;
+        anfitrionId = datos.anfitrionId || anfitrionId;
+
         renderizarLobby();
         renderizarJugadoresMesa();
         renderizarMarcador();
@@ -2598,12 +2943,16 @@ socket.on(
             .disabled =
             true;
 
-        $("btnEntrar")
-            .disabled =
-            true;
+        codigoSala = datos.codigoSala || codigoSala;
+        if (datos.esAnfitrion) anfitrionId = miId;
+
+        $("zonaEntradaSala").classList.add("oculto");
+        $("infoSala").classList.remove("oculto");
+        $("codigoSalaVisible").textContent = codigoSala || "------";
+        $("nombreJugador").disabled = true;
 
         mostrarMensaje(
-            `Entraste como ${miNombre}.`
+            `Entraste como ${miNombre} en la sala ${codigoSala}.`
         );
     }
 );
@@ -2624,6 +2973,14 @@ socket.on(
 
         faseEntreRondas =
             datos.faseEntreRondas;
+
+        codigoSala = datos.codigoSala || codigoSala;
+        anfitrionId = datos.anfitrionId || anfitrionId;
+
+        if (codigoSala && $("infoSala")) {
+            $("infoSala").classList.remove("oculto");
+            $("codigoSalaVisible").textContent = codigoSala;
+        }
 
         renderizarLobby();
         renderizarMarcador();
@@ -2850,9 +3207,40 @@ socket.on(
     "cartaSacada",
     datos => {
 
+        /*
+            Primero se crea LA CARTA REAL en su lugar final.
+            Después esa misma carta nace visualmente encima
+            del mazo/cementerio y viaja hasta el centro.
+        */
         mostrarCartaSacada(
             datos.carta
         );
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+
+                const origen =
+                    datos.carta?.viva
+                        ? $("mazo")
+                        : $("cementerio");
+
+                const cartaReal =
+                    document.querySelector(
+                        "#cartaSacada .carta-visible"
+                    );
+
+                if (origen && cartaReal) {
+                    animarCartaRealDesde(
+                        origen,
+                        cartaReal,
+                        {
+                            voltear: true,
+                            duracion: 700
+                        }
+                    );
+                }
+            });
+        });
     }
 );
 
@@ -2985,11 +3373,35 @@ socket.on(
 
 
 socket.on(
+    "intercambioPreparado",
+    datos => {
+        const botonListo = $("btnListo");
+
+        if (botonListo) {
+            botonListo.disabled = true;
+        }
+
+        animarIntercambioReal(
+            datos
+        );
+    }
+);
+
+
+socket.on(
     "intercambioRealizado",
     datos => {
+        const botonListo = $("btnListo");
+
+        if (botonListo) {
+            botonListo.disabled = false;
+        }
+
+        indicePropioIntercambio = null;
 
         mostrarMensaje(
-            `${datos.jugadorNombre} intercambió una carta con ${datos.rivalNombre}.`
+            `🔄 Se intercambió carta ${datos.indicePropio + 1} de ${datos.jugadorNombre} por carta ${datos.indiceRival + 1} de ${datos.rivalNombre}.`,
+            4500
         );
     }
 );
@@ -3117,6 +3529,21 @@ socket.on(
     }
 );
 
+
+
+socket.on("salaCreada", datos => {
+    codigoSala = datos.codigoSala;
+    anfitrionId = miId;
+    $("infoSala").classList.remove("oculto");
+    $("codigoSalaVisible").textContent = codigoSala;
+    mostrarMensaje(`Sala ${codigoSala} creada. Compartí el código.`);
+});
+
+socket.on("anfitrionCambiado", datos => {
+    anfitrionId = datos.anfitrionId;
+    mostrarMensaje(`${datos.nombre} ahora es el anfitrión.`);
+    renderizarLobby();
+});
 
 socket.on(
     "errorJuego",

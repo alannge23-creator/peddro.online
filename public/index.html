@@ -57,12 +57,39 @@
                     placeholder="Ej: Alan"
                 >
 
-                <button
-                    id="btnEntrar"
-                    class="boton boton-verde"
-                >
-                    Entrar a la partida
-                </button>
+                <div id="zonaEntradaSala" class="zona-entrada-sala">
+
+                    <button
+                        id="btnCrearSala"
+                        class="boton boton-verde"
+                    >
+                        🎲 Crear sala
+                    </button>
+
+                    <div class="unirse-sala">
+                        <input
+                            id="codigoSalaInput"
+                            type="text"
+                            maxlength="6"
+                            autocomplete="off"
+                            placeholder="Código de sala"
+                        >
+
+                        <button
+                            id="btnUnirseSala"
+                            class="boton"
+                        >
+                            Unirse
+                        </button>
+                    </div>
+
+                </div>
+
+                <div id="infoSala" class="info-sala oculto">
+                    <span>Sala</span>
+                    <strong id="codigoSalaVisible">------</strong>
+                    <button id="btnCopiarCodigo" class="boton boton-copiar">Copiar código</button>
+                </div>
                 <button
     id="btnReglas"
     class="boton boton-reglas"
@@ -86,7 +113,7 @@
                         type="number"
                         min="10"
                         max="60"
-                        value="30"
+                        value="40"
                     >
 
                     <span>
@@ -116,6 +143,8 @@
 
             </div>
 
+
+            <p id="mensajeAnfitrion" class="mensaje-anfitrion"></p>
 
             <button
                 id="btnIniciar"
@@ -336,7 +365,7 @@
                 id="temporizadorPreparacion"
                 class="temporizador-grande"
             >
-                30
+                40
             </div>
 
             <p id="preparacionMensaje">

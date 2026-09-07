@@ -15,6 +15,7 @@ const TIEMPO_DEFAULT = 40;
 const TIEMPO_MIN = 10;
 const TIEMPO_MAX = 60;
 const PUNTAJE_MAXIMO = 200;
+const GRACIA_RECONEXION_MS = 60000;
 
 const salas = new Map();
 
@@ -33,6 +34,8 @@ function nuevaSala(codigo, anfitrionId) {
         tiempoPorTurno: TIEMPO_DEFAULT,
         temporizadorTurno: null,
         temporizadorPreparacion: null,
+        finTurno: null,
+        finPreparacion: null,
         versionCementerio: 0,
         intentosSalto: new Set()
     };
@@ -75,6 +78,7 @@ function jugadoresPublicos(sala) {
         listo: j.listo,
         listoEntreRondas: j.listoEntreRondas,
         esAnfitrion: j.id === sala.anfitrionId,
+        conectado: j.conectado !== false,
         cartas: j.cartas.map(() => ({ oculta: true }))
     }));
 }
@@ -189,11 +193,13 @@ function sacarDelMazo(sala) {
 function detenerTemporizadorTurno(sala) {
     if (sala.temporizadorTurno) clearTimeout(sala.temporizadorTurno);
     sala.temporizadorTurno = null;
+    sala.finTurno = null;
 }
 
 function detenerTemporizadorPreparacion(sala) {
     if (sala.temporizadorPreparacion) clearTimeout(sala.temporizadorPreparacion);
     sala.temporizadorPreparacion = null;
+    sala.finPreparacion = null;
 }
 
 function devolverCartaPendiente(sala, jugador) {
@@ -218,6 +224,8 @@ function iniciarTemporizadorDeTurno(sala) {
         segundos: sala.tiempoPorTurno,
         jugadorId: jugador.id
     });
+
+    sala.finTurno = Date.now() + sala.tiempoPorTurno * 1000;
 
     sala.temporizadorTurno = setTimeout(() => {
         if (!salas.has(sala.codigo)) return;
@@ -285,6 +293,8 @@ function comenzarPreparacion(sala) {
     emitirSala(sala, "fasePreparacion", { segundos: sala.tiempoPorTurno });
     enviarJugadores(sala);
     detenerTemporizadorPreparacion(sala);
+    sala.finPreparacion = Date.now() + sala.tiempoPorTurno * 1000;
+
     sala.temporizadorPreparacion = setTimeout(() => {
         if (salas.has(sala.codigo)) finalizarPreparacion(sala);
     }, sala.tiempoPorTurno * 1000);
@@ -377,16 +387,22 @@ function validarNombre(sala, socket, nombre) {
     return limpio;
 }
 
-function agregarJugadorASala(sala, socket, nombre) {
+function agregarJugadorASala(sala, socket, nombre, sessionToken) {
     const limpio = validarNombre(sala, socket, nombre);
     if (!limpio) return false;
     if (sala.partidaIniciada) { socket.emit("errorJuego", "La partida de esa sala ya comenzó."); return false; }
     if (sala.jugadores.length >= MAX_JUGADORES) { socket.emit("errorJuego", "La sala está llena."); return false; }
 
+    const token = String(sessionToken || "").trim();
+    if (!token) { socket.emit("errorJuego", "No se pudo crear la sesión del jugador."); return false; }
+
     socket.join(sala.codigo);
     socket.data.codigoSala = sala.codigo;
+    socket.data.sessionToken = token;
+
     sala.jugadores.push({
         id: socket.id,
+        sessionToken: token,
         nombre: limpio,
         cartas: [],
         puntos: 0,
@@ -394,7 +410,9 @@ function agregarJugadorASala(sala, socket, nombre) {
         desdeCementerio: false,
         accionEspecial: null,
         listo: false,
-        listoEntreRondas: false
+        listoEntreRondas: false,
+        conectado: true,
+        temporizadorExpulsion: null
     });
 
     socket.emit("entradaConfirmada", {
@@ -405,6 +423,169 @@ function agregarJugadorASala(sala, socket, nombre) {
     });
     enviarJugadores(sala);
     return true;
+}
+
+function buscarJugadorPorSesion(sessionToken) {
+    const token = String(sessionToken || "").trim();
+    if (!token) return null;
+
+    for (const sala of salas.values()) {
+        const jugador = sala.jugadores.find(j => j.sessionToken === token);
+        if (jugador) return { sala, jugador };
+    }
+
+    return null;
+}
+
+function datosCementerioParaCliente(sala) {
+    const carta = cartaSuperiorCementerio(sala);
+    return {
+        carta: carta ? {
+            numero: carta.numero,
+            palo: carta.palo,
+            valor: valorCarta(carta),
+            version: sala.versionCementerio
+        } : null
+    };
+}
+
+function restaurarJugador(socket, sessionToken) {
+    const encontrado = buscarJugadorPorSesion(sessionToken);
+    if (!encontrado) {
+        socket.emit("reconexionFallida");
+        return false;
+    }
+
+    const { sala, jugador } = encontrado;
+    const idAnterior = jugador.id;
+
+    if (jugador.temporizadorExpulsion) {
+        clearTimeout(jugador.temporizadorExpulsion);
+        jugador.temporizadorExpulsion = null;
+    }
+
+    jugador.id = socket.id;
+    jugador.conectado = true;
+
+    socket.join(sala.codigo);
+    socket.data.codigoSala = sala.codigo;
+    socket.data.sessionToken = jugador.sessionToken;
+
+    if (sala.anfitrionId === idAnterior) {
+        sala.anfitrionId = socket.id;
+    }
+
+    socket.emit("entradaConfirmada", {
+        id: socket.id,
+        nombre: jugador.nombre,
+        codigoSala: sala.codigo,
+        esAnfitrion: socket.id === sala.anfitrionId,
+        reconectado: true
+    });
+
+    enviarJugadores(sala);
+    enviarCartasPropias(jugador);
+    socket.emit("cementerioActualizado", datosCementerioParaCliente(sala));
+
+    if (sala.fasePreparacion) {
+        const restantes = sala.finPreparacion
+            ? Math.max(1, Math.ceil((sala.finPreparacion - Date.now()) / 1000))
+            : sala.tiempoPorTurno;
+        socket.emit("fasePreparacion", { segundos: restantes });
+    } else if (sala.partidaIniciada && !sala.faseEntreRondas) {
+        const actual = sala.jugadores[sala.indiceTurno];
+        socket.emit("turnoActual", {
+            jugadorId: actual?.id || null,
+            jugadorNombre: actual?.nombre || ""
+        });
+
+        const restantes = sala.finTurno
+            ? Math.max(1, Math.ceil((sala.finTurno - Date.now()) / 1000))
+            : sala.tiempoPorTurno;
+        socket.emit("temporizadorIniciado", {
+            segundos: restantes,
+            jugadorId: actual?.id || null
+        });
+    } else if (sala.faseEntreRondas) {
+        const listos = sala.jugadores.filter(j => j.listoEntreRondas).length;
+        socket.emit("esperandoSiguienteRonda", {
+            listos,
+            total: sala.jugadores.length
+        });
+    }
+
+    socket.emit("reconexionExitosa", {
+        codigoSala: sala.codigo,
+        nombre: jugador.nombre
+    });
+
+    return true;
+}
+
+function eliminarJugadorDefinitivamente(sala, jugador) {
+    const indice = sala.jugadores.indexOf(jugador);
+    if (indice === -1) return;
+
+    const eraAnfitrion = sala.anfitrionId === jugador.id;
+    const eraTurno = sala.jugadores[sala.indiceTurno] === jugador;
+
+    sala.jugadores.splice(indice, 1);
+
+    if (!sala.jugadores.length) {
+        detenerTemporizadorTurno(sala);
+        detenerTemporizadorPreparacion(sala);
+        salas.delete(sala.codigo);
+        return;
+    }
+
+    if (eraAnfitrion) {
+        const nuevo = sala.jugadores.find(j => j.conectado !== false) || sala.jugadores[0];
+        sala.anfitrionId = nuevo.id;
+        emitirSala(sala, "anfitrionCambiado", {
+            anfitrionId: nuevo.id,
+            nombre: nuevo.nombre
+        });
+    }
+
+    if (indice < sala.indiceTurno) {
+        sala.indiceTurno--;
+    } else if (eraTurno && sala.indiceTurno >= sala.jugadores.length) {
+        sala.indiceTurno = 0;
+    }
+
+    if (sala.indiceTurno < 0) sala.indiceTurno = 0;
+
+    if (sala.partidaIniciada && sala.jugadores.length < MIN_JUGADORES) {
+        sala.partidaIniciada = false;
+        sala.fasePreparacion = false;
+        sala.faseEntreRondas = false;
+        sala.ronda = 0;
+        detenerTemporizadorTurno(sala);
+        detenerTemporizadorPreparacion(sala);
+        sala.jugadores.forEach(j => {
+            j.cartas = [];
+            j.cartaSacada = null;
+            j.accionEspecial = null;
+            j.listo = false;
+            j.listoEntreRondas = false;
+        });
+        emitirSala(sala, "partidaReiniciada", {
+            motivo: "No quedan suficientes jugadores para continuar."
+        });
+    } else if (
+        sala.partidaIniciada &&
+        sala.faseEntreRondas &&
+        sala.jugadores.every(j => j.listoEntreRondas)
+    ) {
+        comenzarRonda(sala);
+        return;
+    }
+
+    enviarJugadores(sala);
+
+    if (sala.partidaIniciada && !sala.faseEntreRondas && !sala.fasePreparacion) {
+        enviarTurnoActual(sala);
+    }
 }
 
 io.on("connection", socket => {
@@ -419,12 +600,19 @@ io.on("connection", socket => {
         anfitrionId: null
     });
 
-    socket.on("crearSala", nombre => {
+    socket.on("reconectarSala", datos => {
         if (socket.data.codigoSala) return;
+        restaurarJugador(socket, datos?.sessionToken);
+    });
+
+    socket.on("crearSala", datos => {
+        if (socket.data.codigoSala) return;
+        const nombre = typeof datos === "string" ? datos : datos?.nombre;
+        const sessionToken = typeof datos === "string" ? null : datos?.sessionToken;
         const codigo = generarCodigoSala();
         const sala = nuevaSala(codigo, socket.id);
         salas.set(codigo, sala);
-        if (agregarJugadorASala(sala, socket, nombre)) {
+        if (agregarJugadorASala(sala, socket, nombre, sessionToken)) {
             socket.emit("salaCreada", { codigoSala: codigo });
         } else {
             salas.delete(codigo);
@@ -436,7 +624,7 @@ io.on("connection", socket => {
         const codigo = String(datos?.codigo || "").trim().toUpperCase();
         const sala = salas.get(codigo);
         if (!sala) { socket.emit("errorJuego", "No existe una sala con ese código."); return; }
-        agregarJugadorASala(sala, socket, datos?.nombre);
+        agregarJugadorASala(sala, socket, datos?.nombre, datos?.sessionToken);
     });
 
     // Compatibilidad local con clientes anteriores: crea una sala automáticamente.
@@ -445,7 +633,7 @@ io.on("connection", socket => {
         const codigo = generarCodigoSala();
         const sala = nuevaSala(codigo, socket.id);
         salas.set(codigo, sala);
-        if (!agregarJugadorASala(sala, socket, nombre)) salas.delete(codigo);
+        if (!agregarJugadorASala(sala, socket, nombre, `legacy-${socket.id}`)) salas.delete(codigo);
     });
 
     socket.on("iniciarPartida", segundos => {
@@ -626,36 +814,29 @@ io.on("connection", socket => {
     });
 
     socket.on("disconnect", () => {
-        const codigo=socket.data.codigoSala;
-        const sala=salas.get(codigo);
-        if(!sala)return;
-        const indice=sala.jugadores.findIndex(j=>j.id===socket.id);
-        if(indice===-1)return;
-        sala.jugadores.splice(indice,1);
+        const codigo = socket.data.codigoSala;
+        const sala = salas.get(codigo);
+        if (!sala) return;
 
-        if(!sala.jugadores.length){
-            detenerTemporizadorTurno(sala); detenerTemporizadorPreparacion(sala); salas.delete(codigo); return;
+        const jugador = sala.jugadores.find(
+            j => j.id === socket.id || j.sessionToken === socket.data.sessionToken
+        );
+
+        if (!jugador) return;
+
+        jugador.conectado = false;
+
+        if (jugador.temporizadorExpulsion) {
+            clearTimeout(jugador.temporizadorExpulsion);
         }
 
-        if(socket.id===sala.anfitrionId){
-            sala.anfitrionId=sala.jugadores[0].id;
-            emitirSala(sala,"anfitrionCambiado",{anfitrionId:sala.anfitrionId,nombre:sala.jugadores[0].nombre});
-        }
-
-        if(sala.indiceTurno>=sala.jugadores.length) sala.indiceTurno=0;
-
-        if(sala.partidaIniciada && sala.jugadores.length<MIN_JUGADORES){
-            sala.partidaIniciada=false; sala.fasePreparacion=false; sala.faseEntreRondas=false; sala.ronda=0;
-            detenerTemporizadorTurno(sala); detenerTemporizadorPreparacion(sala);
-            sala.jugadores.forEach(j=>{j.cartas=[];j.cartaSacada=null;j.accionEspecial=null;j.listo=false;j.listoEntreRondas=false;});
-            emitirSala(sala,"partidaReiniciada",{motivo:"No quedan suficientes jugadores para continuar."});
-        } else if(sala.partidaIniciada && sala.faseEntreRondas && sala.jugadores.every(j=>j.listoEntreRondas)) {
-            comenzarRonda(sala);
-            return;
-        }
+        jugador.temporizadorExpulsion = setTimeout(() => {
+            if (!salas.has(sala.codigo)) return;
+            if (jugador.conectado) return;
+            eliminarJugadorDefinitivamente(sala, jugador);
+        }, GRACIA_RECONEXION_MS);
 
         enviarJugadores(sala);
-        if(sala.partidaIniciada&&!sala.faseEntreRondas&&!sala.fasePreparacion){enviarTurnoActual(sala);iniciarTemporizadorDeTurno(sala);}
     });
 });
 

@@ -2948,6 +2948,12 @@ socket.on(
     () => {
         miId = socket.id;
 
+        console.log(
+            "✅ Socket conectado:",
+            socket.id,
+            socket.recovered ? "(sesión recuperada por Socket.IO)" : ""
+        );
+
         const sesion = leerSesionLocal();
 
         if (sesion?.sessionToken === sessionToken) {
@@ -2955,6 +2961,66 @@ socket.on(
                 sessionToken
             });
         }
+    }
+);
+
+
+// Diagnóstico de microcortes. No expulsa ni borra la sesión.
+socket.on(
+    "disconnect",
+    reason => {
+        console.warn(
+            "⚠️ Socket desconectado temporalmente:",
+            reason
+        );
+
+        if (codigoSala) {
+            mostrarMensaje(
+                "Conexión interrumpida. Intentando reconectar...",
+                4000
+            );
+        }
+    }
+);
+
+
+socket.io.on(
+    "reconnect_attempt",
+    intento => {
+        console.log(
+            "🔄 Intento de reconexión:",
+            intento
+        );
+    }
+);
+
+
+socket.io.on(
+    "reconnect",
+    intento => {
+        console.log(
+            "✅ Reconectado tras",
+            intento,
+            "intento(s)"
+        );
+
+        if (codigoSala) {
+            mostrarMensaje(
+                "✅ Reconectado a la partida.",
+                2500
+            );
+        }
+    }
+);
+
+
+socket.io.on(
+    "reconnect_error",
+    error => {
+        console.warn(
+            "❌ Error de reconexión:",
+            error?.message || error
+        );
     }
 );
 

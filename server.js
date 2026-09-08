@@ -4,7 +4,17 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    // Tolera mejor microcortes de Wi‑Fi / datos móviles y suspensión breve del navegador.
+    pingInterval: 25000,
+    pingTimeout: 60000,
+
+    // Socket.IO intenta recuperar la conexión y las rooms automáticamente.
+    connectionStateRecovery: {
+        maxDisconnectionDuration: 5 * 60 * 1000,
+        skipMiddlewares: true
+    }
+});
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
@@ -15,7 +25,7 @@ const TIEMPO_DEFAULT = 40;
 const TIEMPO_MIN = 10;
 const TIEMPO_MAX = 60;
 const PUNTAJE_MAXIMO = 200;
-const GRACIA_RECONEXION_MS = 60000;
+const GRACIA_RECONEXION_MS = 5 * 60 * 1000;
 
 const salas = new Map();
 
@@ -396,6 +406,28 @@ function agregarJugadorASala(sala, socket, nombre, sessionToken) {
     const token = String(sessionToken || "").trim();
     if (!token) { socket.emit("errorJuego", "No se pudo crear la sesión del jugador."); return false; }
 
+    // Un sessionToken identifica a UN jugador real.
+    // Si otra pestaña con el mismo localStorage intenta entrar como otro jugador,
+    // evitamos duplicarlo porque después un disconnect podría afectar a la sesión equivocada.
+    const sesionExistente = buscarJugadorPorSesion(token);
+    if (sesionExistente) {
+        const existente = sesionExistente.jugador;
+
+        if (existente.conectado !== false) {
+            socket.emit(
+                "errorJuego",
+                "Esta sesión ya está siendo usada por otro jugador/pestaña. Usá otro navegador, modo incógnito independiente o salí de la sala anterior."
+            );
+            return false;
+        }
+
+        socket.emit(
+            "errorJuego",
+            "Ya existe una sesión desconectada con este navegador. Esperá la reconexión automática o salí de la sala anterior."
+        );
+        return false;
+    }
+
     socket.join(sala.codigo);
     socket.data.codigoSala = sala.codigo;
     socket.data.sessionToken = token;
@@ -466,6 +498,10 @@ function restaurarJugador(socket, sessionToken) {
 
     jugador.id = socket.id;
     jugador.conectado = true;
+
+    console.log(
+        `[reconnect] sala=${sala.codigo} jugador=${jugador.nombre} oldSocket=${idAnterior} newSocket=${socket.id}`
+    );
 
     socket.join(sala.codigo);
     socket.data.codigoSala = sala.codigo;
@@ -642,8 +678,10 @@ io.on("connection", socket => {
             return;
         }
 
+        // Una salida voluntaria solo puede afectar al socket que la pidió.
+        // Nunca usamos sessionToken acá para evitar sacar a otro jugador por error.
         const jugador = sala.jugadores.find(
-            j => j.id === socket.id || j.sessionToken === socket.data.sessionToken
+            j => j.id === socket.id
         );
 
         if (!jugador) {
@@ -863,11 +901,18 @@ io.on("connection", socket => {
         const sala = salas.get(codigo);
         if (!sala) return;
 
+        // CRÍTICO: en un disconnect buscamos SOLO por socket.id.
+        // localStorage puede compartirse entre pestañas, por lo que usar sessionToken
+        // aquí podía marcar como desconectado al jugador equivocado.
         const jugador = sala.jugadores.find(
-            j => j.id === socket.id || j.sessionToken === socket.data.sessionToken
+            j => j.id === socket.id
         );
 
         if (!jugador) return;
+
+        console.log(
+            `[disconnect] sala=${sala.codigo} jugador=${jugador.nombre} socket=${socket.id} reason=${socket.conn?.transport?.name || "desconocido"}`
+        );
 
         jugador.conectado = false;
 

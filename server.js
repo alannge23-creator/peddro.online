@@ -24,7 +24,9 @@ const CARTAS_POR_JUGADOR = 4;
 const TIEMPO_DEFAULT = 40;
 const TIEMPO_MIN = 10;
 const TIEMPO_MAX = 60;
-const PUNTAJE_MAXIMO = 200;
+const PUNTAJE_DEFAULT = 200;
+const PUNTAJE_MIN = 20;
+const PUNTAJE_MAX = 1000;
 const GRACIA_RECONEXION_MS = 5 * 60 * 1000;
 
 const salas = new Map();
@@ -42,6 +44,7 @@ function nuevaSala(codigo, anfitrionId) {
         ronda: 0,
         indiceTurno: 0,
         tiempoPorTurno: TIEMPO_DEFAULT,
+        puntajeObjetivo: PUNTAJE_DEFAULT,
         temporizadorTurno: null,
         temporizadorPreparacion: null,
         finTurno: null,
@@ -102,7 +105,8 @@ function enviarJugadores(sala) {
         ronda: sala.ronda,
         codigoSala: sala.codigo,
         anfitrionId: sala.anfitrionId,
-        tiempoPorTurno: sala.tiempoPorTurno
+        tiempoPorTurno: sala.tiempoPorTurno,
+        puntajeObjetivo: sala.puntajeObjetivo
     });
 }
 
@@ -362,7 +366,7 @@ function cantarPedro(sala, socket) {
     });
 
     const llamador = buscarJugador(sala, socket.id);
-    const hayFinal = sala.jugadores.some(j => j.puntos >= PUNTAJE_MAXIMO);
+    const hayFinal = sala.jugadores.some(j => j.puntos >= sala.puntajeObjetivo);
     emitirSala(sala, "rondaTerminada", {
         ronda: sala.ronda,
         resultados,
@@ -719,19 +723,77 @@ io.on("connection", socket => {
         if (!agregarJugadorASala(sala, socket, nombre, `legacy-${socket.id}`)) salas.delete(codigo);
     });
 
-    socket.on("iniciarPartida", segundos => {
+    socket.on("iniciarPartida", datos => {
         const sala = salaDeSocket(socket);
         if (!sala || sala.partidaIniciada) return;
-        if (socket.id !== sala.anfitrionId) { socket.emit("errorJuego", "Solo el anfitrión puede iniciar la partida."); return; }
-        if (sala.jugadores.length < MIN_JUGADORES) { socket.emit("errorJuego", "Se necesitan al menos 2 jugadores."); return; }
-        let tiempo = Number(segundos);
-        if (!Number.isFinite(tiempo)) tiempo = TIEMPO_DEFAULT;
-        sala.tiempoPorTurno = Math.max(TIEMPO_MIN, Math.min(TIEMPO_MAX, Math.round(tiempo)));
+        if (socket.id !== sala.anfitrionId) {
+            socket.emit("errorJuego", "Solo el anfitrión puede iniciar la partida.");
+            return;
+        }
+        if (sala.jugadores.length < MIN_JUGADORES) {
+            socket.emit("errorJuego", "Se necesitan al menos 2 jugadores.");
+            return;
+        }
+
+        const tiempoRecibido =
+            typeof datos === "object"
+                ? datos?.segundos
+                : datos;
+
+        const puntajeRecibido =
+            typeof datos === "object"
+                ? datos?.puntajeObjetivo
+                : PUNTAJE_DEFAULT;
+
+        let tiempo = Number(tiempoRecibido);
+
+        if (!Number.isFinite(tiempo)) {
+            tiempo = TIEMPO_DEFAULT;
+        }
+
+        sala.tiempoPorTurno =
+            Math.max(
+                TIEMPO_MIN,
+                Math.min(
+                    TIEMPO_MAX,
+                    Math.round(tiempo)
+                )
+            );
+
+        let puntajeObjetivo =
+            Number(puntajeRecibido);
+
+        if (!Number.isFinite(puntajeObjetivo)) {
+            puntajeObjetivo = PUNTAJE_DEFAULT;
+        }
+
+        sala.puntajeObjetivo =
+            Math.max(
+                PUNTAJE_MIN,
+                Math.min(
+                    PUNTAJE_MAX,
+                    Math.round(puntajeObjetivo)
+                )
+            );
+
         sala.partidaIniciada = true;
         sala.faseEntreRondas = false;
         sala.ronda = 0;
-        sala.jugadores.forEach(j => { j.puntos = 0; j.listoEntreRondas = false; });
-        emitirSala(sala, "partidaIniciada", { tiempoPorTurno:sala.tiempoPorTurno });
+
+        sala.jugadores.forEach(j => {
+            j.puntos = 0;
+            j.listoEntreRondas = false;
+        });
+
+        emitirSala(
+            sala,
+            "partidaIniciada",
+            {
+                tiempoPorTurno: sala.tiempoPorTurno,
+                puntajeObjetivo: sala.puntajeObjetivo
+            }
+        );
+
         comenzarRonda(sala);
     });
 

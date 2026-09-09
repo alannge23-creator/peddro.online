@@ -732,7 +732,13 @@ function renderizarLobby() {
     }
 
     if ($("tiempoTurno")) {
-        $("tiempoTurno").disabled = estoyDentro && !soyAnfitrion;
+        $("tiempoTurno").disabled =
+            estoyDentro && !soyAnfitrion;
+    }
+
+    if ($("puntajeObjetivo")) {
+        $("puntajeObjetivo").disabled =
+            estoyDentro && !soyAnfitrion;
     }
 }
 
@@ -2633,10 +2639,19 @@ $("btnIniciar")
 
             socket.emit(
                 "iniciarPartida",
-                Number(
-                    $("tiempoTurno")
-                        .value
-                )
+                {
+                    segundos:
+                        Number(
+                            $("tiempoTurno")
+                                .value
+                        ),
+
+                    puntajeObjetivo:
+                        Number(
+                            $("puntajeObjetivo")
+                                .value
+                        )
+                }
             );
         }
     );
@@ -3043,6 +3058,26 @@ socket.on(
 
         codigoSala = datos.codigoSala || codigoSala;
         anfitrionId = datos.anfitrionId || anfitrionId;
+
+        if (
+            $("tiempoTurno") &&
+            Number.isFinite(
+                Number(datos.tiempoPorTurno)
+            )
+        ) {
+            $("tiempoTurno").value =
+                datos.tiempoPorTurno;
+        }
+
+        if (
+            $("puntajeObjetivo") &&
+            Number.isFinite(
+                Number(datos.puntajeObjetivo)
+            )
+        ) {
+            $("puntajeObjetivo").value =
+                datos.puntajeObjetivo;
+        }
 
         renderizarLobby();
         renderizarJugadoresMesa();
